@@ -113,18 +113,34 @@ def user_Auth(master_path,authPass):
             
 
 
+def load_file(fpath):
+    if fpath.is_file():
+        with fpath.open("r") as f:
+            try :
+                store = json.load(f)
+                return store
+            except json.JSONDecodeError:
+                store = {}
+                return store
+    else:
+        store = {}
+        return store
+
+
 # ----- Add new Entry -------
 # Args : category, username, password.
 def add_entry(cat,uname,pw,vFernet):
     
-    if store_path.is_file():
-        with store_path.open("r") as f:
-            try :
-                store = json.load(f)
-            except json.JSONDecodeError:
-                store = {}
-    else:
-        store = {}
+    # if store_path.is_file():
+    #     with store_path.open("r") as f:
+    #         try :
+    #             store = json.load(f)
+    #         except json.JSONDecodeError:
+    #             store = {}
+    # else:
+    #     store = {}
+
+    store = load_file(store_path)
     
     #isinstace function here checks if "cat" exists in the dict or not 
     if cat not in store or not isinstance(store[cat], list):
@@ -138,6 +154,35 @@ def add_entry(cat,uname,pw,vFernet):
         json.dump(store,f,indent=4)
     print(f"{cat}, Entry added Successfully")
 
+def get_user_choice(options,item_type="item"):
+    
+    if not options:
+        print(f"No {item_type}s to choose from")
+    
+    for i,option in enumerate(options):
+        print(f"{i+1}.{option.capitalize()}")
+    
+    while True:
+        choice = input(f"Choose a {item_type} by name or Number: ").strip()
+        try: 
+            choice_idx = int(choice) - 1
+            if 0<= choice_idx < len(options):
+                return choice_idx
+            else: 
+                print("Invalid Number please try again.")
+        except ValueError:
+            try: 
+                choice_idx = [opt.lower() for opt in options].index(choice.lower())
+                return choice_idx
+            except ValueError:
+                print(f"Invalid {item_type} name. Please try again.")
+
+    
+
+# ------ View Entries -------
+def view_pass(cat=""):
+    store = load_file(store_path)
+    pass
 
 
 
@@ -164,26 +209,29 @@ while attempt > 0:
                 exit()
             continue
     else:
-        if store_path.is_file():
-            with store_path.open("r") as f:
-                try :
-                    store = json.load(f)
-                except json.JSONDecodeError:
-                    store = {}
-        else:
-            store = {}
+        store = load_file(store_path)
         
         print("Vault Unlcoked - welcome")
-        pt = "thisIsVerySensitivePassword"
-        add_entry("mail","uzeee","mypassword2",vault_fernet)
-        add_entry("mail","chirag","mypassword23",vault_fernet)
-        add_entry("mail","Nikku","mypassword55",vault_fernet)
-        add_entry("Valorant","Nikku","uzee69",vault_fernet)
         
-        print(f"decoded password of {store['Valorant'][0]['uname']}")
+
+        # ---- list the stored categories ----
+        print("Added categories")
+        print("--------------------------")
+        key_list = [key for key in store]
+        # print(f"Your choice : {get_user_choice(key_list)}")
+        
+        # add_entry("mail","uzeee","mypassword2",vault_fernet)
+        # add_entry("mail","chirag","mypassword23",vault_fernet)
+        # add_entry("mail","Nikku","mypassword55",vault_fernet)
+        # add_entry("Valorant","Nikku","uzee69",vault_fernet)
+        
+        # print(f"decoded password of {store['Valorant'][0]['uname']}")
         # print(f"decoded password of {store['Valorant'][1]['pw']}")
         
-        realPass = vault_fernet.decrypt(store['Valorant'][0]['pw'].encode()).decode()
-        print(realPass)
+        # realPass = vault_fernet.decrypt(store['Valorant'][0]['pw'].encode()).decode()
+        # print(realPass)
+
+        # view_pass("Valorant")
+
         
         break
