@@ -154,13 +154,22 @@ def add_entry(cat,uname,pw,vFernet):
         json.dump(store,f,indent=4)
     print(f"{cat}, Entry added Successfully")
 
-def get_user_choice(options,item_type="item"):
+def get_user_choice(options,item_type="item", display_key = None):
     
     if not options:
         print(f"No {item_type}s to choose from")
+        return None
     
-    for i,option in enumerate(options):
-        print(f"{i+1}.{option.capitalize()}")
+    display_options = []
+    if display_key:
+        for option in options: 
+            display_options.append(option.get(display_key,"UnNamed entry"))
+    else:
+        display_options = options
+    
+    for i,option_name in enumerate(display_options):
+        print(f"{i+1}.{str(option_name).capitalize()}")
+
     
     while True:
         choice = input(f"Choose a {item_type} by name or Number: ").strip()
@@ -171,11 +180,17 @@ def get_user_choice(options,item_type="item"):
             else: 
                 print("Invalid Number please try again.")
         except ValueError:
-            try: 
-                choice_idx = [opt.lower() for opt in options].index(choice.lower())
-                return choice_idx
-            except ValueError:
-                print(f"Invalid {item_type} name. Please try again.")
+            lower_choice = choice.lower()
+            lower_options = [opt.lower() for opt in display_options]
+            
+            if lower_options.count(lower_choice) > 1:
+                print(f"'{choice}' is ambiguous. Please choose by number instead.")
+            else:
+                try: 
+                    choice_idx = lower_options.index(lower_choice)
+                    return choice_idx
+                except ValueError:
+                    print(f"Invalid {item_type} name. Please try again.")
 
     
 
@@ -217,9 +232,36 @@ while attempt > 0:
         # ---- list the stored categories ----
         print("Added categories")
         print("--------------------------")
-        key_list = [key for key in store]
-        # print(f"Your choice : {get_user_choice(key_list)}")
         
+        # Iterate through all the keys / categories 
+        # And return selected category index.
+        key_list = [key for key in store]
+        category_index = get_user_choice(key_list, "category")
+
+        if category_index is not None:
+            # Storing only selected category data.
+            selected_category = key_list[category_index]
+            print(f"Your choice: {selected_category}")
+
+
+            # itm_lst containts list of dicts with uname and pw.
+            itm_list = store[selected_category]
+            entry_index = get_user_choice(itm_list, item_type="entry", display_key="uname")
+            
+            # print(entry_index)
+
+            if entry_index is not None:
+                selected_entry = itm_list[entry_index]
+                uname = selected_entry['uname']
+                encrypted_pw = selected_entry['pw']
+                
+                decrypted_pw = vault_fernet.decrypt(encrypted_pw.encode()).decode()
+                
+                print(f"\nUsername: {uname}")
+                print(f"Password: {decrypted_pw}")
+
+        
+
         # add_entry("mail","uzeee","mypassword2",vault_fernet)
         # add_entry("mail","chirag","mypassword23",vault_fernet)
         # add_entry("mail","Nikku","mypassword55",vault_fernet)
