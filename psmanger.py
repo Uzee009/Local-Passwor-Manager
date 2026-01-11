@@ -4,6 +4,7 @@ from getpass import getpass
 import questionary
 import os
 import secrets
+import functools
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError, VerifyMismatchError
 
@@ -36,36 +37,29 @@ def user_reg(pw):
     scram = ph.hash(pw)
     salt = os.urandom(16)
     
-    # The actual key for encrypting passwords in store.json
     vault_key = Fernet.generate_key() 
-    
-    # A separate recovery key, also a Fernet key
     recovery_key = Fernet.generate_key() 
 
-    # Encrypt the vault_key with a key derived from the master password
     derived_master_key = derive_key(pw, salt)
     encrypted_vault_key_A = Fernet(derived_master_key).encrypt(vault_key)
-    
-    # Encrypt the same vault_key with the recovery key
     encrypted_vault_key_B = Fernet(recovery_key).encrypt(vault_key)
 
     data = {
         "master_hash": scram,
         "salt": base64.b64encode(salt).decode(),
-        "vk_a": base64.b64encode(encrypted_vault_key_A).decode(), # Encrypted with master
-        "vk_b": base64.b64encode(encrypted_vault_key_B).decode()  # Encrypted with recovery
+        "vk_a": base64.b64encode(encrypted_vault_key_A).decode(),
+        "vk_b": base64.b64encode(encrypted_vault_key_B).decode()
     }
     
     with open(master_path, "w") as f:
         json.dump(data, f, indent=4)
     
-    # Display the one-time recovery key
     print("\n" + "="*60)
     print("IMPORTANT: Your Vault has been created.")
     print("If you forget your master password, you will need this recovery key.")
     print("Please MANUALLY save this key in a new text file somewhere safe.")
     print("The application WILL NOT save this for you.\n")
-    print(f"Your one-time recovery key is:\n{recovery_key.decode()}") # decode to make it a plain string
+    print(f"Your one-time recovery key is:\n{recovery_key.decode()}")
     print("="*60 + "\n")
 
 
@@ -84,7 +78,6 @@ def user_Auth(master_path,authPass):
     try:
         ph.verify(master_hash,authPass)
     except (VerifyMismatchError, VerificationError):
-        # We don't print here to avoid revealing if a user exists
         return None
 
     derived = derive_key(authPass,salt)
@@ -94,7 +87,6 @@ def user_Auth(master_path,authPass):
         dec_vault_key = f.decrypt(vk_a)
         return Fernet(dec_vault_key)
     except InvalidToken:
-        # This can happen if master file is corrupt or a different salt was used
         print("Critical error: Could not decrypt vault key even with correct password.")
         return None
 
@@ -132,7 +124,6 @@ def add_entry_interactive(vFernet):
     existing_categories = list(store.keys())
 
     print("\n--- Add New Password ---")
-    print(f"Existing Categories : \n{existing_categories}")
     cat = questionary.autocomplete(
         'Enter category (or select an existing one):',
         choices=existing_categories,
@@ -156,154 +147,157 @@ def add_entry_interactive(vFernet):
     add_entry(cat, uname, pw, vFernet)
 
 
-def _select_entry(data):
-    """
-    Helper function to interactively select a category and username.
-    Returns (category, entry_dict) or (None, None) if cancelled or no data.
-    """
-    while True:
-        if not data:
-            print("No categories found in the vault.")
-            questionary.press_any_key_to_continue().ask()
-            return None, None
+# ----- Action Callbacks for Navigator ----- 
 
-        cat_list = sorted(list(data.keys()))
-        category_choices = cat_list + [questionary.Separator(), "Go Back to Main Menu"]
-
-        choice = questionary.select(
-            "What category would you like to choose?",
-            choices=category_choices,
-            show_selected=True
-        ).ask()
-
-        if choice is None or choice == "Go Back to Main Menu":
-            return None, None
-
-        while True:
-            unames_in_category = [entry['uname'] for entry in data[choice]]
-            if not unames_in_category:
-                print(f"No passwords found in the '{choice}' category.")
-                questionary.press_any_key_to_continue("Press any key to return to categories...").ask()
-                break
-
-            username_choices = sorted(unames_in_category) + [questionary.Separator(), "Go Back to Categories"]
-
-            ch_uname = questionary.select(
-                f"Select a username from '{choice}' (or go back):",
-                choices=username_choices,
-                pointer=">",
-                show_selected=True
-            ).ask()
-
-            if ch_uname is None:
-                return None, None
-            elif ch_uname == "Go Back to Categories":
-                break
-            
-            for entry in data[choice]:
-                if entry['uname'] == ch_uname:
-                    return choice, entry
-            
-            print("Error: Selected username not found. Please try again.")
-            questionary.press_any_key_to_continue().ask()
-
-
-def view_pass(vFernet):
-    """
-    Interactively guides the user to select and view a password.
-    """
-    data = load_file(store_path)
-    category, entry = _select_entry(data)
-
-    if category is None:
-        return
-
+def _perform_view_action(vFernet, category, entry):
+    """The actual logic for viewing a single entry."""
     try:
         encrypted_pw_str = entry['pw']
         decrypted_pw_bytes = vFernet.decrypt(encrypted_pw_str.encode())
         decrypted_pw = decrypted_pw_bytes.decode()
         
-        print("\n--- Credentials ---")
+        print("\n" + "-"*25)
         print(f"Category: {category}")
         print(f"Username: {entry['uname']}")
         print(f"Password: {decrypted_pw}")
-        print("---------------------")
+        print("-"*(25) + "\n")
         
     except InvalidToken:
-        print("\nError: Could not decrypt password. Data may be corrupt or key is invalid.")
+        print("\nError: Could not decrypt password. Data may be corrupt.\n")
     except Exception as e:
-        print(f"\nAn unexpected error occurred: {e}")
+        print(f"\nAn unexpected error occurred: {e}\n")
     
-    questionary.press_any_key_to_continue("Press any key to continue...").ask()
+    questionary.press_any_key_to_continue("Press enter to return to the username list...").ask()
+    return False # Data was not changed
 
-
-def edit_entry(vFernet):
-    """
-    Interactively guides the user to select an entry and then edit it.
-    """
-    data = load_file(store_path)
-    if not data:
-        print("No categories found in the vault to edit.")
-        questionary.press_any_key_to_continue().ask()
-        return
-
-    category, entry_to_edit_original = _select_entry(data)
-
-    if category is None:
-        return
-
-    print("\n--- Master Password Re-authentication ---")
-    master_pass_check = getpass("Please enter your master password to edit this entry: ")
-    
-    with open(master_path, "r") as f:
-        master_data = json.load(f)
+def _perform_edit_action(vFernet, master_hash, data, category, original_entry):
+    """The actual logic for editing a single entry. Returns True if data changed."""
+    print("\n--- Password Re-authentication for Edit ---")
+    master_pass_check = getpass("Please enter your master password to confirm: ")
     
     try:
-        ph.verify(master_data['master_hash'], master_pass_check)
-        print("✅ Master Password Verified.")
+        ph.verify(master_hash, master_pass_check)
     except (VerifyMismatchError, VerificationError):
-        print("Incorrect Master Password. Edit operation cancelled.")
+        print("\nIncorrect Master Password. Edit operation cancelled.")
         questionary.press_any_key_to_continue().ask()
-        return
+        return False
 
-    print(f"\n--- Editing Entry in Category: {category} ---")
-    print(f"Current Username: {entry_to_edit_original['uname']}")
+    print("✅ Master Password Verified.\n")
+    print(f"--- Editing '{original_entry['uname']}' in Category: {category} ---")
     
     new_uname = questionary.text(
         'Enter new username (or press Enter to keep current):',
-        default=entry_to_edit_original['uname']
+        default=original_entry['uname']
     ).ask()
-    if new_uname is None: return
+    if new_uname is None: return False
 
     new_pw = questionary.password(
         'Enter new password (or press Enter to keep current):'
     ).ask()
-    if new_pw is None: return
+    if new_pw is None: return False
+    
+    if new_uname == original_entry['uname'] and not new_pw:
+        print("\nNo changes made.")
+        questionary.press_any_key_to_continue().ask()
+        return False
 
-    # Find the specific entry in the data list
     entry_index = -1
     for i, entry in enumerate(data[category]):
-        if entry['uname'] == entry_to_edit_original['uname'] and entry['pw'] == entry_to_edit_original['pw']:
+        if entry['uname'] == original_entry['uname'] and entry['pw'] == original_entry['pw']:
             entry_index = i
             break
     
     if entry_index == -1:
-        print("Error: Could not find the original entry to update.")
-        return
+        print("\nError: Could not find the original entry to update. It may have been changed.")
+        return False
 
-    # Update username if a new one was provided
     if new_uname:
         data[category][entry_index]['uname'] = new_uname
-    
-    # Update password if a new one was provided
     if new_pw:
         data[category][entry_index]['pw'] = vFernet.encrypt(new_pw.encode()).decode()
 
     with open(store_path, "w") as f:
         json.dump(data, f, indent=4)
     
-    print("\nEntry updated successfully!")
+    print("\n✅ Entry updated successfully!")
     questionary.press_any_key_to_continue().ask()
+    return True
+
+# --- Main Navigator --- 
+
+def entry_navigator(action_callback):
+    """Main navigation engine. Takes a callback to perform an action on a selected entry."""
+    data = load_file(store_path)
+    
+    while True: # Category selection loop
+        if not data:
+            print("No categories found in the vault.")
+            questionary.press_any_key_to_continue().ask()
+            return
+
+        cat_list = sorted(list(data.keys()))
+        category_choices = cat_list + [questionary.Separator(), "Go Back to Main Menu"]
+
+        category_choice = questionary.select(
+            "Select a Category:",
+            choices=category_choices,
+            show_selected=True
+        ).ask()
+
+        if category_choice is None or category_choice == "Go Back to Main Menu":
+            return
+
+        while True: # Username selection loop
+            unames_in_category = [entry['uname'] for entry in data[category_choice]]
+            if not unames_in_category:
+                print(f"\nNo passwords found in the '{category_choice}' category.")
+                questionary.press_any_key_to_continue("Press enter to return to categories...").ask()
+                break
+
+            username_choices = sorted(unames_in_category) + [
+                questionary.Separator(), 
+                "Go Back to Categories",
+                "Go Back to Main Menu"
+            ]
+
+            username_choice = questionary.select(
+                f"Select an entry in '{category_choice}':",
+                choices=username_choices,
+                pointer=">",
+                show_selected=True
+            ).ask()
+
+            if username_choice is None or username_choice == "Go Back to Main Menu":
+                return
+            elif username_choice == "Go Back to Categories":
+                break
+
+            selected_entry = None
+            for entry in data[category_choice]:
+                if entry['uname'] == username_choice:
+                    selected_entry = entry.copy()
+                    break
+            
+            if selected_entry:
+                data_was_changed = action_callback(category=category_choice, original_entry=selected_entry, data=data)
+                if data_was_changed:
+                    data = load_file(store_path)
+
+
+# --- Top-Level Functions --- 
+
+def view_pass(vFernet):
+    """Wrapper for navigator to view passwords."""
+    print("\n--- View Passwords ---")
+    view_action = functools.partial(_perform_view_action, vFernet)
+    navigator_callback = lambda category, original_entry, data: view_action(category=category, entry=original_entry)
+    entry_navigator(navigator_callback)
+
+def edit_entry(vFernet, master_hash):
+    """Wrapper for navigator to edit passwords."""
+    print("\n--- Edit Passwords ---")
+    edit_action = functools.partial(_perform_edit_action, vFernet, master_hash)
+    entry_navigator(edit_action)
 
 def recover_account():
     """Handles the account recovery process using a recovery key file."""
@@ -313,7 +307,7 @@ def recover_account():
         return
 
     recovery_file_path_str = questionary.path(
-        "Please enter the full path to your recovery key file:"
+        "Please select your recovery key file:"
     ).ask()
 
     if not recovery_file_path_str:
@@ -373,7 +367,7 @@ def recover_account():
     exit()
 
 
-def main_menu(vault_fernet):
+def main_menu(vault_fernet, master_data):
     """Displays the main menu and returns True to continue, False to exit."""
     choice = questionary.select(
         "What would you like to do?",
@@ -393,7 +387,7 @@ def main_menu(vault_fernet):
     elif choice == "Add New Password":
         add_entry_interactive(vault_fernet)
     elif choice == "Edit an Entry":
-        edit_entry(vault_fernet)
+        edit_entry(vault_fernet, master_data['master_hash'])
     elif choice == "Exit" or choice is None:
         return False
     return True
@@ -407,13 +401,19 @@ if not master_path.is_file():
     exit()
 
 # --- Authentication Loop ---
+master_data_main = None
 if master_path.is_file():
+    with open(master_path, "r") as f:
+        master_data_main = json.load(f)
+
     auth_choice = questionary.select(
         "Welcome back! Please choose an option:",
         choices=["Log In", "Forgot Master Password"]
     ).ask()
     
-    if auth_choice == "Forgot Master Password":
+    if auth_choice is None:
+        exit()
+    elif auth_choice == "Forgot Master Password":
         recover_account()
 
 attempt = 3
@@ -434,7 +434,7 @@ while attempt > 0:
 # --- Main Application Loop ---
 print("\nVault Unlocked - Welcome!")
 while True:
-    should_continue = main_menu(vault_fernet)
+    should_continue = main_menu(vault_fernet, master_data_main)
     if not should_continue:
         break
 
