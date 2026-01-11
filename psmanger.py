@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import base64
 from getpass import getpass
+import questionary
 import os
 from argon2 import PasswordHasher 
 from argon2.exceptions import VerificationError,VerifyMismatchError 
@@ -154,126 +155,161 @@ def add_entry(cat,uname,pw,vFernet):
         json.dump(store,f,indent=4)
     print(f"{cat}, Entry added Successfully")
 
-def get_user_choice(options,item_type="item", display_key = None):
-    
-    if not options:
-        print(f"No {item_type}s to choose from")
-        return None
-    
-    display_options = []
-    if display_key:
-        for option in options: 
-            display_options.append(option.get(display_key,"UnNamed entry"))
-    else:
-        display_options = options
-    
-    for i,option_name in enumerate(display_options):
-        print(f"{i+1}.{str(option_name).capitalize()}")
+# def add_entry_interactive(vFernet):
+#     """Interactively prompts the user to add a new password entry."""
+#     store = load_file(store_path)
+#     existing_categories = list(store.keys())
 
-    
-    while True:
-        choice = input(f"Choose a {item_type} by name or Number: ").strip()
-        try: 
-            choice_idx = int(choice) - 1
-            if 0<= choice_idx < len(options):
-                return choice_idx
-            else: 
-                print("Invalid Number please try again.")
-        except ValueError:
-            lower_choice = choice.lower()
-            lower_options = [opt.lower() for opt in display_options]
+#     print("\n--- Add New Password ---")
+#     cat = questionary.autocomplete(
+#         'Enter category (or select an existing one):',
+#         choices=existing_categories,
+#         validate=lambda text: True if len(text) > 0 else "Category cannot be empty."
+#     ).ask()
+
+#     if cat is None: return  # User cancelled
+
+#     uname = questionary.text(
+#         'Enter username:',
+#         validate=lambda text: True if len(text) > 0 else "Username cannot be empty."
+#     ).ask()
+#     if uname is None: return
+
+#     pw = questionary.password(
+#         'Enter password:',
+#         validate=lambda text: True if len(text) > 0 else "Password cannot be empty."
+#     ).ask()
+#     if pw is None: return
+
+#     # Call the original logic function to add the entry
+#     add_entry(cat, uname, pw, vFernet)
+
+
+def view_pass(vFernet):
+    """
+    Interactively guides the user to select and view a password, with go-back functionality.
+    """
+    while True: # Loop for category selection
+        data = load_file(store_path)
+        if not data:
+            print("No categories found in the vault.")
+            questionary.press_any_key_to_continue().ask()
+            return
+
+        cat_list = sorted(list(data.keys()))
+        category_choices = cat_list + [questionary.Separator(), "Go Back to Main Menu"]
+
+        choice = questionary.select(
+            "What category would you like to choose?",
+            choices=category_choices,
+            show_selected=True
+        ).ask()
+
+        # Bug fix 1: Handle 'Go Back' BEFORE accessing data[choice]
+        if choice is None or choice == "Go Back to Main Menu":
+            return # Exit view_pass function
+
+        while True: # Loop for username selection within a category
+            unames_in_category = [entry['uname'] for entry in data[choice]]
+            if not unames_in_category:
+                print(f"No passwords found in the '{choice}' category.")
+                questionary.press_any_key_to_continue("Press any key to return to categories...").ask()
+                break # Break inner loop, go back to category selection
+
+            username_choices = sorted(unames_in_category) + [questionary.Separator(), "Go Back to Categories"]
+
+            ch_uname = questionary.select(
+                f"Select a username from '{choice}' (or go back):",
+                choices=username_choices,
+                pointer=">",
+                show_selected=True
+            ).ask()
+
+            if ch_uname is None:
+                return # Exit view_pass function
+            elif ch_uname == "Go Back to Categories":
+                break # Break inner loop, go back to category selection
             
-            if lower_options.count(lower_choice) > 1:
-                print(f"'{choice}' is ambiguous. Please choose by number instead.")
-            else:
-                try: 
-                    choice_idx = lower_options.index(lower_choice)
-                    return choice_idx
-                except ValueError:
-                    print(f"Invalid {item_type} name. Please try again.")
+            # If a username is selected, proceed to decrypt and display
+            for entry in data[choice]:
+                if entry['uname'] == ch_uname:
+                    try:
+                        encrypted_pw_str = entry['pw']
+                        decrypted_pw_bytes = vFernet.decrypt(encrypted_pw_str.encode())
+                        decrypted_pw = decrypted_pw_bytes.decode()
+                        
+                        print("\n--- Credentials ---")
+                        print(f"Category: {choice}")
+                        print(f"Username: {ch_uname}")
+                        print(f"Password: {decrypted_pw}")
+                        print("---------------------")
+                        
+                    except InvalidToken:
+                        print("\nError: Could not decrypt password. Data may be corrupt or key is invalid.")
+                    except Exception as e:
+                        print(f"\nAn unexpected error occurred: {e}")
+                    
+                    questionary.press_any_key_to_continue("Press any key to continue...").ask()
+                    break # Break out of the for loop after finding the entry
+            
+            # Bug fix 2: Break from the inner while loop to return to category selection
+            if ch_uname and ch_uname != "Go Back to Categories":
+                break
 
-    
 
-# ------ View Entries -------
-def view_pass(cat=""):
-    store = load_file(store_path)
-    pass
 
+def main_menu(vault_fernet):
+    """Displays the main menu and returns True to continue, False to exit."""
+    choice = questionary.select(
+        "What would you like to do?",
+        choices=[
+            "View Passwords",
+            "Add New Password",
+            questionary.Separator(),
+            "Exit"
+        ],
+        use_indicator=True
+    ).ask()
+
+    if choice == "View Passwords":
+        view_pass(vault_fernet)
+    elif choice == "Exit" or choice is None:
+        return False  # Signal to exit the loop
+    return True  # Signal to continue
 
 
 # ------ Main Flow -------
 if not master_path.is_file():
-    
-    pw = getpass("Create master Password : ")
+    pw = getpass("Create master Password: ")
     user_reg(pw)
-    print("Vault genrated, restart the script" )
+    print("Vault generated, please restart the script.")
+    exit()
 
+# --- Authentication Loop ---
 attempt = 3
 vault_fernet = None
 while attempt > 0:
-    if vault_fernet is None: 
-        try:
-            authPass = getpass("Please enter the passowrd: ")
-            vault_fernet = user_Auth(master_path,authPass)
-            
-        except ValueError as e:
-            attempt -= 1
-            print(f'{e}. Attempts left : {attempt}')
-            if attempt == 0:
-                print("Too many attempts, Terminating script...")
-                exit()
-            continue
+    authPass = getpass("Please enter your master password: ")
+    try:
+        vault_fernet = user_Auth(master_path, authPass)
+        if vault_fernet:
+            break  # Success
+    except (ValueError, VerifyMismatchError, VerificationError) as e:
+        # Catching specific errors from auth logic
+        pass # The user_Auth function already prints errors
+
+    attempt -= 1
+    if attempt > 0:
+        print(f'Authentication failed. Attempts left: {attempt}')
     else:
-        store = load_file(store_path)
-        
-        print("Vault Unlcoked - welcome")
-        
+        print("Too many failed attempts, terminating script.")
+        exit()
 
-        # ---- list the stored categories ----
-        print("Added categories")
-        print("--------------------------")
-        
-        # Iterate through all the keys / categories 
-        # And return selected category index.
-        key_list = [key for key in store]
-        category_index = get_user_choice(key_list, "category")
-
-        if category_index is not None:
-            # Storing only selected category data.
-            selected_category = key_list[category_index]
-            print(f"Your choice: {selected_category}")
-
-
-            # itm_lst containts list of dicts with uname and pw.
-            itm_list = store[selected_category]
-            entry_index = get_user_choice(itm_list, item_type="entry", display_key="uname")
-            
-            # print(entry_index)
-
-            if entry_index is not None:
-                selected_entry = itm_list[entry_index]
-                uname = selected_entry['uname']
-                encrypted_pw = selected_entry['pw']
-                
-                decrypted_pw = vault_fernet.decrypt(encrypted_pw.encode()).decode()
-                
-                print(f"\nUsername: {uname}")
-                print(f"Password: {decrypted_pw}")
-
-        
-
-        # add_entry("mail","uzeee","mypassword2",vault_fernet)
-        # add_entry("mail","chirag","mypassword23",vault_fernet)
-        # add_entry("mail","Nikku","mypassword55",vault_fernet)
-        # add_entry("Valorant","Nikku","uzee69",vault_fernet)
-        
-        # print(f"decoded password of {store['Valorant'][0]['uname']}")
-        # print(f"decoded password of {store['Valorant'][1]['pw']}")
-        
-        # realPass = vault_fernet.decrypt(store['Valorant'][0]['pw'].encode()).decode()
-        # print(realPass)
-
-        # view_pass("Valorant")
-
-        
+# --- Main Application Loop ---
+print("\nVault Unlocked - Welcome!")
+while True:
+    should_continue = main_menu(vault_fernet)
+    if not should_continue:
         break
+
+print("Exiting. Goodbye!")
