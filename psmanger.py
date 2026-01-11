@@ -3,7 +3,6 @@ import base64
 from getpass import getpass
 import questionary
 import os
-import secrets
 import functools
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError, VerifyMismatchError
