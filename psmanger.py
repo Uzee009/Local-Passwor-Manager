@@ -7,6 +7,7 @@ import os
 import functools
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError, VerifyMismatchError
+import sys
 
 import json
 from pathlib import Path
@@ -130,15 +131,22 @@ def add_entry_interactive(vFernet):
     """Interactively prompts the user to add a new password entry."""
     store = load_file(store_path)
     existing_categories = list(store.keys())
-
     print("\n--- Add New Password ---")
-    cat = questionary.autocomplete(
-        'Enter category (or select an existing one):',
-        choices=existing_categories,
-        validate=lambda text: True if len(text) > 0 else "Category cannot be empty.",
-        style=custom_style,
-        qmark='→'
-    ).ask()
+    if existing_categories is None:
+        cat = questionary.autocomplete(
+            'Enter category (or select an existing one):',
+            choices=existing_categories,
+            validate=lambda text: True if len(text) > 0 else "Category cannot be empty.",
+            style=custom_style,
+            qmark='→'
+        ).ask()
+    else: 
+        cat = questionary.text(
+            'Enter category (or select an existing one):',
+            validate=lambda text: True if len(text) > 0 else "Category cannot be empty.",
+            style=custom_style,
+            qmark='→'
+        ).ask()
 
     if cat is None: return
 
@@ -389,7 +397,7 @@ def recover_account():
         
     print("\nPassword has been reset successfully.")
     print("Please restart the script and log in with your new password.")
-    exit()
+    sys.exit()
 
 
 def main_menu(vault_fernet, master_data):
@@ -425,7 +433,7 @@ if not master_path.is_file():
     pw = getpass("Create master Password: ")
     user_reg(pw)
     print("Vault generated, please restart the script.")
-    exit()
+    sys.exit()
 
 # --- Authentication Loop ---
 master_data_main = None
@@ -442,7 +450,7 @@ if master_path.is_file():
     ).ask()
     
     if auth_choice is None:
-        exit()
+        sys.exit()
     elif auth_choice == "Forgot Master Password":
         recover_account()
 
@@ -459,7 +467,7 @@ while attempt > 0:
         print(f'Authentication failed. Attempts left: {attempt}')
     else:
         print("Too many failed attempts, terminating script.")
-        exit()
+        sys.exit()
 
 # --- Main Application Loop ---
 print("\nVault Unlocked - Welcome!")
