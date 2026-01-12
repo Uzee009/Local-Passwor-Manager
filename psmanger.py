@@ -2,6 +2,7 @@
 import base64
 from getpass import getpass
 import questionary
+from questionary import Style
 import os
 import functools
 from argon2 import PasswordHasher
@@ -13,6 +14,14 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.fernet import Fernet, InvalidToken
 
+
+custom_style = Style([
+    ('question', 'fg:orange'),
+    ('highlighted', 'fg:green bold'),
+    ('selected', 'fg:green'),
+    ('pointer', 'fg:green bold'),
+    ('answer', 'fg:green'),
+])
 
 ph = PasswordHasher()
 master_path = Path("master.json")
@@ -126,20 +135,26 @@ def add_entry_interactive(vFernet):
     cat = questionary.autocomplete(
         'Enter category (or select an existing one):',
         choices=existing_categories,
-        validate=lambda text: True if len(text) > 0 else "Category cannot be empty."
+        validate=lambda text: True if len(text) > 0 else "Category cannot be empty.",
+        style=custom_style,
+        qmark='→'
     ).ask()
 
     if cat is None: return
 
     uname = questionary.text(
         'Enter username:',
-        validate=lambda text: True if len(text) > 0 else "Username cannot be empty."
+        validate=lambda text: True if len(text) > 0 else "Username cannot be empty.",
+        style=custom_style,
+        qmark='→'
     ).ask()
     if uname is None: return
 
     pw = questionary.password(
         'Enter password:',
-        validate=lambda text: True if len(text) > 0 else "Password cannot be empty."
+        validate=lambda text: True if len(text) > 0 else "Password cannot be empty.",
+        style=custom_style,
+        qmark='→'
     ).ask()
     if pw is None: return
 
@@ -166,7 +181,7 @@ def _perform_view_action(vFernet, category, entry):
     except Exception as e:
         print(f"\nAn unexpected error occurred: {e}\n")
     
-    questionary.press_any_key_to_continue("Press enter to return to the username list...").ask()
+    questionary.press_any_key_to_continue("Press enter to return to the username list...", style=custom_style).ask()
     return False # Data was not changed
 
 def _perform_edit_action(vFernet, master_hash, data, category, original_entry):
@@ -178,7 +193,7 @@ def _perform_edit_action(vFernet, master_hash, data, category, original_entry):
         ph.verify(master_hash, master_pass_check)
     except (VerifyMismatchError, VerificationError):
         print("\nIncorrect Master Password. Edit operation cancelled.")
-        questionary.press_any_key_to_continue().ask()
+        questionary.press_any_key_to_continue(style=custom_style).ask()
         return False
 
     print("✅ Master Password Verified.\n")
@@ -186,18 +201,22 @@ def _perform_edit_action(vFernet, master_hash, data, category, original_entry):
     
     new_uname = questionary.text(
         'Enter new username (or press Enter to keep current):',
-        default=original_entry['uname']
+        default=original_entry['uname'],
+        style=custom_style,
+        qmark='→'
     ).ask()
     if new_uname is None: return False
 
     new_pw = questionary.password(
-        'Enter new password (or press Enter to keep current):'
+        'Enter new password (or press Enter to keep current):',
+        style=custom_style,
+        qmark='→'
     ).ask()
     if new_pw is None: return False
     
     if new_uname == original_entry['uname'] and not new_pw:
         print("\nNo changes made.")
-        questionary.press_any_key_to_continue().ask()
+        questionary.press_any_key_to_continue(style=custom_style).ask()
         return False
 
     entry_index = -1
@@ -219,7 +238,7 @@ def _perform_edit_action(vFernet, master_hash, data, category, original_entry):
         json.dump(data, f, indent=4)
     
     print("\n✅ Entry updated successfully!")
-    questionary.press_any_key_to_continue().ask()
+    questionary.press_any_key_to_continue(style=custom_style).ask()
     return True
 
 # --- Main Navigator --- 
@@ -231,7 +250,7 @@ def entry_navigator(action_callback):
     while True: # Category selection loop
         if not data:
             print("No categories found in the vault.")
-            questionary.press_any_key_to_continue().ask()
+            questionary.press_any_key_to_continue(style=custom_style).ask()
             return
 
         cat_list = sorted(list(data.keys()))
@@ -240,7 +259,10 @@ def entry_navigator(action_callback):
         category_choice = questionary.select(
             "Select a Category:",
             choices=category_choices,
-            show_selected=True
+            show_selected=True,
+            style=custom_style,
+            qmark='→',
+            pointer='▶'
         ).ask()
 
         if category_choice is None or category_choice == "Go Back to Main Menu":
@@ -250,7 +272,7 @@ def entry_navigator(action_callback):
             unames_in_category = [entry['uname'] for entry in data[category_choice]]
             if not unames_in_category:
                 print(f"\nNo passwords found in the '{category_choice}' category.")
-                questionary.press_any_key_to_continue("Press enter to return to categories...").ask()
+                questionary.press_any_key_to_continue("Press enter to return to categories...", style=custom_style).ask()
                 break
 
             username_choices = sorted(unames_in_category) + [
@@ -262,8 +284,10 @@ def entry_navigator(action_callback):
             username_choice = questionary.select(
                 f"Select an entry in '{category_choice}':",
                 choices=username_choices,
-                pointer=">",
-                show_selected=True
+                pointer="▶",
+                show_selected=True,
+                style=custom_style,
+                qmark='→'
             ).ask()
 
             if username_choice is None or username_choice == "Go Back to Main Menu":
@@ -306,7 +330,9 @@ def recover_account():
         return
 
     recovery_file_path_str = questionary.path(
-        "Please select your recovery key file:"
+        "Please select your recovery key file:",
+        style=custom_style,
+        qmark='→'
     ).ask()
 
     if not recovery_file_path_str:
@@ -378,7 +404,9 @@ def main_menu(vault_fernet, master_data):
             "Exit"
         ],
         use_indicator=True,
-        qmark= ">"
+        style=custom_style,
+        qmark="→",
+        pointer="▶"
     ).ask()
 
     if choice == "View Passwords":
@@ -407,7 +435,10 @@ if master_path.is_file():
 
     auth_choice = questionary.select(
         "Welcome back! Please choose an option:",
-        choices=["Log In", "Forgot Master Password"]
+        choices=["Log In", "Forgot Master Password"],
+        style=custom_style,
+        qmark='→',
+        pointer='▶'
     ).ask()
     
     if auth_choice is None:
