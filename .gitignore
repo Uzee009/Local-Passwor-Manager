@@ -2,5 +2,4 @@ master.json
 store.json
 recovery.txt
 build/
-dist/
 env/
