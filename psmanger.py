@@ -133,6 +133,13 @@ def add_entry_interactive(vFernet):
     existing_categories = list(store.keys())
     print("\n--- Add New Password ---")
     if existing_categories is None:
+        cat = questionary.text(
+            'Enter category (or select an existing one):',
+            validate=lambda text: True if len(text) > 0 else "Category cannot be empty.",
+            style=custom_style,
+            qmark='→'
+        ).ask()
+    else: 
         cat = questionary.autocomplete(
             'Enter category (or select an existing one):',
             choices=existing_categories,
@@ -140,14 +147,7 @@ def add_entry_interactive(vFernet):
             style=custom_style,
             qmark='→'
         ).ask()
-    else: 
-        cat = questionary.text(
-            'Enter category (or select an existing one):',
-            validate=lambda text: True if len(text) > 0 else "Category cannot be empty.",
-            style=custom_style,
-            qmark='→'
-        ).ask()
-
+        
     if cat is None: return
 
     uname = questionary.text(
