@@ -1,6 +1,11 @@
 # Command-Line Password Manager
 
-A secure, offline, command-line password manager written in Python. This application allows you to store and manage your passwords securely on your local machine.
+A secure, offline, command-line password manager written in Python. This application allows you to store and manage your passwords securely on your local machine. 
+
+## The goal of this project was 
+
+### A. Slove an issue of mine to store passwords. 
+### B. Practice the python concepts I have learned over last couple months.
 
 ## Features
 
@@ -45,7 +50,11 @@ To get the password manager running, follow these steps to set up a virtual envi
 
 ## How to Use
 
-Once the setup is complete, you can run the application from within the activated virtual environment.
+### Windows Executable
+
+For Windows users, a standalone executable `pmanager.exe` is available in the `dist` folder. You can download and run it directly without needing to install Python or set up a virtual environment.
+
+[Download pmanager.exe](dist/pmanager.exe)
 
 #### First-Time Setup
 
