@@ -377,8 +377,8 @@ def recover_account():
         return
 
     print("You can now set a new master password.")
-    new_master_pw = getpass("Enter your new master password: ")
-    new_master_pw_confirm = getpass("Confirm your new master password: ")
+    new_master_pw = questionary.password("Create a new master Password").ask()
+    new_master_pw_confirm = questionary.password("Confirm new master Password").ask()
 
     if not new_master_pw or new_master_pw != new_master_pw_confirm:
         print("Passwords do not match or are empty. Recovery failed.")
@@ -397,6 +397,7 @@ def recover_account():
         
     print("\nPassword has been reset successfully.")
     print("Please restart the script and log in with your new password.")
+    input("Press any Key to restart script...")
     sys.exit()
 
 
@@ -430,9 +431,11 @@ def main_menu(vault_fernet, master_data):
 
 # ------ Main Flow ------- 
 if not master_path.is_file():
+    print("----- Welcome to CMD Password manager ----- \n")
     pw = getpass("Create master Password: ")
     user_reg(pw)
     print("Vault generated, please restart the script.")
+    input("Press any key to Exit...")
     sys.exit()
 
 # --- Authentication Loop ---
