@@ -54,7 +54,7 @@ To get the password manager running, follow these steps to set up a virtual envi
 
 For Windows users, a standalone executable `pmanager.exe` is available in the `dist` folder. You can download and run it directly without needing to install Python or set up a virtual environment.
 
-[Download pmanager.exe](dist/pmanager.exe)
+[Download pmanager.exe]([dist/pmanager.exe](https://github.com/Uzee009/Local-Passwor-Manager/blob/main/dist/pmanager))
 
 #### First-Time Setup
 
